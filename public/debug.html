@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><title>Debug</title></head>
+<body>
+<h2>API Client Diagnostic</h2>
+<div id="out" style="font-family:monospace;white-space:pre;font-size:13px;line-height:1.6;padding:16px"></div>
+<script>
+const out = document.getElementById("out");
+function log(msg, ok) { out.textContent += (ok===true?"OK  ":ok===false?"ERR ":"    ") + msg + "\n"; }
+
+fetch("/app.js").then(r => r.text()).then(js => {
+  log("app.js size: " + js.length + " bytes");
+  log("Has sendRequest: " + js.includes("function sendRequest"), js.includes("function sendRequest"));
+  log("Has _doSendRequest: " + js.includes("function _doSendRequest"), js.includes("function _doSendRequest"));
+  log("Has captureFormState: " + js.includes("function captureFormState"), js.includes("function captureFormState"));
+  log("Has setupEventListeners: " + js.includes("function setupEventListeners"), js.includes("function setupEventListeners"));
+  try {
+    new Function(js);
+    log("JS SYNTAX: NO ERRORS", true);
+  } catch(e) {
+    log("JS SYNTAX ERROR: " + e.message, false);
+  }
+}).catch(e => log("fetch error: " + e));
+</script>
+</body>
+</html>

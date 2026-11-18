@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Client</title>
+  <link rel="stylesheet" href="styles.css?v=20261108v81" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <!-- CryptoJS for Postman script compatibility -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">⚡</span>
+          <span class="logo-text">API Client</span>
+        </div>
+        <div class="sidebar-header-actions">
+          <button class="icon-btn" id="btn-reload-app" title="Reload App">🔄</button>
+          <button class="icon-btn" id="btn-theme-toggle" title="Toggle Light/Dark theme">🌙</button>
+          <button class="icon-btn" id="btn-import-collection" title="Import Collection">📥</button>
+          <button class="icon-btn" id="btn-new-collection" title="New Collection">+</button>
+        </div>
+      </div>
+
+      <div class="sidebar-tabs">
+        <button class="tab-btn active" data-tab="collections">Collections</button>
+        <button class="tab-btn" data-tab="history">History</button>
+        <button class="tab-btn" data-tab="environments">Env</button>
+      </div>
+
+      <div class="sidebar-content" id="tab-collections">
+        <div class="col-search-wrap">
+          <span class="col-search-icon">🔍</span>
+          <input type="text" id="col-search" class="col-search-input" placeholder="Search requests..." />
+          <button id="btn-col-search-clear" class="col-search-clear hidden" title="Clear search">×</button>
+        </div>
+        <div id="collections-list" class="tree-list"></div>
+      </div>
+
+      <div class="sidebar-content hidden" id="tab-history">
+        <div class="history-header">
+          <span>Recent Requests</span>
+          <button class="link-btn" id="btn-clear-history">Clear</button>
+        </div>
+        <div id="history-list" class="tree-list"></div>
+      </div>
+
+      <div class="sidebar-content hidden" id="tab-environments">
+        <div class="env-header">
+          <span>Environments</span>
+          <button class="link-btn" id="btn-new-env">+ New</button>
+        </div>
+        <div id="env-list" class="tree-list"></div>
+        <div class="env-active">
+          <label>Active:</label>
+          <select id="active-env-select">
+            <option value="">None</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Resize handle -->
+    <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Drag to resize sidebar"></div>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Request Bar -->
+      <div class="request-bar">
+        <select id="method-select" class="method-select">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+          <option value="HEAD">HEAD</option>
+          <option value="OPTIONS">OPTIONS</option>
+        </select>
+        <textarea id="url-input" class="url-input" rows="1" placeholder="Enter URL  or  {{variable}}  or  {{$uuid}}"></textarea>
+        <button id="btn-send" class="send-btn">Send</button>
+        <button id="btn-save" class="save-btn" title="Save Request">Save</button>
+      </div>
+
+      <!-- Active Environment Indicator -->
+      <div class="active-env-indicator" id="active-env-indicator">
+        <span class="env-indicator-label">Environment:</span>
+        <span class="env-indicator-name" id="env-indicator-name">None</span>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div class="action-toolbar">
+        <button class="toolbar-btn" id="btn-import-curl" title="Paste a cURL command to populate this request">
+          📥 Import cURL
+        </button>
+        <button class="toolbar-btn" id="btn-export-curl" title="Generate a cURL command for this request">
+          📤 Export cURL
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn" id="btn-show-dynvars" title="View all dynamic variables (? shortcut)">
+          ✨ Dynamic Vars
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn layout-toggle-btn" id="btn-layout-toggle" title="Toggle layout: Horizontal ↔ Vertical">
+          <span id="layout-icon">⬌</span> <span id="layout-label">Horizontal</span>
+        </button>
+      </div>
+
+      <!-- Context bar: shows active saved request + dirty indicator -->
+      <div id="request-context-bar" class="request-context-bar hidden">
+        <span id="req-dirty-dot" class="req-dirty-dot hidden" title="Unsaved changes">●</span>
+        <span id="req-context-path" class="req-context-path"></span>
+        <div style="flex:1"></div>
+        <button id="btn-quick-save" class="quick-save-btn hidden" title="Save changes (⌘S)">💾 Save Changes</button>
+        <span id="req-context-hint" class="req-context-hint">⌘S</span>
+      </div>
+
+      <!-- Split Panel Container (Request Left | Response Right) -->
+      <div class="split-panel" id="split-panel">
+        <!-- Left: Request Section -->
+        <div class="request-section">
+          <div class="req-tabs">
+            <button class="req-tab active" data-tab="params">Params</button>
+            <button class="req-tab" data-tab="headers">Headers</button>
+            <button class="req-tab" data-tab="auth">Auth</button>
+            <button class="req-tab" data-tab="body">Body</button>
+            <button class="req-tab" data-tab="prescript">Pre-Script</button>
+            <button class="req-tab" data-tab="postscript">Post-Script</button>
+            <button class="req-tab" data-tab="settings">Settings</button>
+          </div>
+
+          <!-- Params Tab -->
+          <div class="req-content" id="tab-params">
+            <div class="kv-table">
+              <div class="kv-header"><span></span><span>Key</span><span>Value</span><span></span></div>
+              <div id="params-list"></div>
+              <button class="add-row-btn" data-target="params">+ Add Parameter</button>
+            </div>
+          </div>
+
+          <!-- Headers Tab -->
+          <div class="req-content hidden" id="tab-headers">
+            <div class="kv-table">
+              <div class="kv-header"><span></span><span>Key</span><span>Value</span><span></span></div>
+              <div id="headers-list"></div>
+              <button class="add-row-btn" data-target="headers">+ Add Header</button>
+            </div>
+          </div>
+
+          <!-- Auth Tab -->
+          <div class="req-content hidden" id="tab-auth">
+            <div class="auth-type-row">
+              <label>Auth Type</label>
+              <select id="auth-type">
+                <option value="none">None</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="apikey">API Key</option>
+              </select>
+            </div>
+            <div id="auth-fields"></div>
+          </div>
+
+          <!-- Body Tab -->
+          <div class="req-content hidden" id="tab-body">
+            <div class="body-type-row">
+              <label>Body Type</label>
+              <div class="body-type-btns">
+                <button class="body-type-btn active" data-type="none">None</button>
+                <button class="body-type-btn" data-type="json">JSON</button>
+                <button class="body-type-btn" data-type="form">Form URL-Encoded</button>
+                <button class="body-type-btn" data-type="xml">XML</button>
+                <button class="body-type-btn" data-type="text">Text</button>
+              </div>
+            </div>
+            <div id="body-editor" class="hidden">
+              <div class="var-chips-bar">
+                <span class="var-chips-label">Dynamic vars:</span>
+                <span class="var-chip" data-var="{{$uuid}}" title="Random UUID v4">$uuid</span>
+                <span class="var-chip" data-var="{{$timestamp}}" title="Unix epoch seconds">$timestamp</span>
+                <span class="var-chip" data-var="{{$epochMs}}" title="Unix epoch milliseconds">$epochMs</span>
+                <span class="var-chip" data-var="{{$isoTimestamp}}" title="ISO 8601 timestamp">$isoTimestamp</span>
+                <span class="var-chip" data-var="{{$randomInt}}" title="Random integer 0-999">$randomInt</span>
+                <span class="var-chip" data-var="{{$timestampFormat:YYYY-MM-DD HH:mm:ss}}" title="Custom timestamp format">$timestampFormat</span>
+              </div>
+              <div class="editor-toolbar">
+                <div class="editor-actions">
+                  <button class="editor-act-btn"        id="btn-beautify-body" title="Beautify / Format JSON (⌘⇧F)">✦ Beautify</button>
+                  <button class="editor-act-btn"        id="btn-copy-body"     title="Copy payload to clipboard">📋 Copy</button>
+                  <button class="editor-act-btn danger" id="btn-clear-body"    title="Clear payload">✕ Clear</button>
+                </div>
+                <div class="editor-meta">
+                  <span id="body-json-status" class="body-json-status"></span>
+                  <span id="body-line-count"  class="body-line-count"></span>
+                </div>
+              </div>
+              <div class="editor-wrap" id="body-editor-wrap">
+                <div class="body-editor-container">
+                  <div class="body-line-numbers" id="body-line-numbers"></div>
+                  <div class="body-editor-scroll" id="body-editor-scroll">
+                    <div class="body-editor-inner">
+                      <div class="body-highlight-layer" id="body-highlight-layer"></div>
+                      <textarea id="body-input" class="body-textarea" placeholder="Enter request body..." spellcheck="false"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="form-editor" class="hidden">
+              <div class="kv-table">
+                <div class="kv-header"><span>Key</span><span>Value</span><span></span></div>
+                <div id="form-list"></div>
+                <button class="add-row-btn" data-target="form">+ Add Field</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pre-Script Tab -->
+          <div class="req-content hidden" id="tab-prescript">
+            <div class="script-info-bar">
+              <span class="script-info-text">Runs <strong>before</strong> each request. Use <code>pm</code> object to manipulate env/variables.</span>
+            </div>
+            <div class="var-chips-bar">
+              <span class="var-chips-label">Insert:</span>
+              <span class="var-chip" data-var="{{$uuid}}" title="UUID v4">$uuid</span>
+              <span class="var-chip" data-var="{{$timestamp}}" title="Unix seconds">$timestamp</span>
+              <span class="var-chip" data-var="{{$epochMs}}" title="Unix ms">$epochMs</span>
+              <span class="var-chip" data-var="{{$isoTimestamp}}" title="ISO 8601">$isoTimestamp</span>
+              <span class="var-chip" data-var="{{$randomInt}}" title="Random int">$randomInt</span>
+              <span class="var-chip" data-var='pm.environment.set("key", "value")' title="Set env var">set env</span>
+              <span class="var-chip" data-var='pm.variables.set("key", "value")' title="Set request var">set var</span>
+            </div>
+            <div class="script-editor-container">
+              <div class="script-line-numbers" id="prescript-line-numbers"></div>
+              <div class="script-editor-scroll" id="prescript-editor-scroll">
+                <div class="script-editor-inner">
+                  <div class="script-highlight-layer" id="prescript-highlight-layer"></div>
+                  <textarea id="prescript-input" class="script-textarea" placeholder="// Pre-request script..." spellcheck="false"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post-Script Tab -->
+          <div class="req-content hidden" id="tab-postscript">
+            <div class="script-info-bar">
+              <span class="script-info-text">Runs <strong>after</strong> each response. Use <code>pm.response</code> to read response and <code>pm.test()</code> for assertions.</span>
+            </div>
+            <div class="var-chips-bar">
+              <span class="var-chips-label">Insert:</span>
+              <span class="var-chip" data-var='pm.response.json()' title="Parse response JSON">response.json()</span>
+              <span class="var-chip" data-var='pm.response.code' title="HTTP status code">response.code</span>
+              <span class="var-chip" data-var='pm.test("name", () => { pm.expect(pm.response.code).to.have.status(200); })' title="Status test">test 200</span>
+              <span class="var-chip" data-var='pm.environment.set("key", pm.response.json().field)' title="Save response field">save field</span>
+            </div>
+            <div class="script-editor-container">
+              <div class="script-line-numbers" id="postscript-line-numbers"></div>
+              <div class="script-editor-scroll" id="postscript-editor-scroll">
+                <div class="script-editor-inner">
+                  <div class="script-highlight-layer" id="postscript-highlight-layer"></div>
+                  <textarea id="postscript-input" class="script-textarea" placeholder="// Post-request script..." spellcheck="false"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings Tab -->
+          <div class="req-content hidden" id="tab-settings">
+            <div class="settings-form">
+              <div class="setting-row">
+                <label>Timeout (seconds)</label>
+                <input type="number" id="timeout-input" value="30" min="1" max="300" />
+              </div>
+              <div class="setting-row">
+                <label>Follow Redirects</label>
+                <input type="checkbox" id="follow-redirects" checked />
+              </div>
+              <div class="setting-section-divider"></div>
+              <div class="setting-row">
+                <label>
+                  <input type="checkbox" id="relay-enabled" />
+                  Enable Relay
+                </label>
+                <span class="setting-hint">Wrap request through relay proxy</span>
+              </div>
+              <div class="setting-row relay-url-row" id="relay-url-row">
+                <label>Relay URL</label>
+                <input type="text" id="relay-url" class="relay-url-input" placeholder="https://example.com/relay" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resize handle between request and response -->
+        <div class="split-resize-handle" id="split-resize-handle" title="Drag to resize"></div>
+
+      <!-- Response Section -->
+      <div class="response-section">
+        <div class="response-header">
+          <span class="response-title">Response</span>
+          <div class="response-meta" id="response-meta">
+            <span id="response-status" class="res-status"></span>
+            <span id="response-duration" class="res-duration"></span>
+            <span id="response-size" class="res-size"></span>
+          </div>
+          <div class="res-history-wrap" id="res-history-wrap">
+            <select id="res-history-select" class="res-history-select" title="Response history">
+              <option value="">No history</option>
+            </select>
+            <button class="res-history-clear" id="btn-clear-res-history" title="Clear history">🗑</button>
+          </div>
+          <div class="res-tabs">
+            <button class="res-tab active" data-tab="res-body">Body</button>
+            <button class="res-tab" data-tab="res-headers">Headers</button>
+            <button class="res-tab" data-tab="res-console" id="res-tab-console">Console</button>
+          </div>
+          <div class="res-actions">
+            <button class="link-btn" id="btn-copy-response">Copy</button>
+            <button class="link-btn" id="btn-download-response">Download</button>
+          </div>
+        </div>
+
+        <div class="response-body-container" id="res-body">
+          <div id="response-placeholder" class="response-placeholder">
+            <div class="placeholder-icon">⚡</div>
+            <p>Enter a URL and click Send</p>
+          </div>
+          <div id="response-content" class="hidden">
+            <div class="res-format-bar">
+              <button class="link-btn active" id="btn-pretty">Tree</button>
+              <button class="link-btn" id="btn-raw">Raw</button>
+              <span class="res-format-sep"></span>
+              <button class="link-btn" id="btn-expand-all" title="Expand all nodes">⊞ Expand</button>
+              <button class="link-btn" id="btn-collapse-all" title="Collapse all nodes">⊟ Collapse</button>
+              <span class="res-format-sep"></span>
+              <div class="res-search-wrap">
+                <span class="res-search-icon">🔍</span>
+                <input type="text" id="res-search-input" class="res-search-input" placeholder="Search in response..." />
+                <span id="res-search-count" class="res-search-count hidden"></span>
+              </div>
+              <span class="res-format-sep"></span>
+              <div class="res-filter-wrap">
+                <span class="res-filter-icon" title="JSON Path Filter">⊕</span>
+                <input type="text" id="res-filter-input" class="res-filter-input" placeholder="Filter: data.items[0].name" autocomplete="off" />
+                <div id="res-filter-suggest" class="res-filter-suggest hidden"></div>
+                <button id="btn-filter-clear" class="res-filter-clear hidden" title="Clear filter">×</button>
+              </div>
+            </div>
+            <div id="response-body-tree" class="response-tree"></div>
+            <div class="response-pre-wrap">
+              <div class="line-numbers" id="response-line-numbers"></div>
+              <pre id="response-body-pre" class="response-pre hidden"></pre>
+            </div>
+          </div>
+          <div id="response-loading" class="hidden response-loading">
+            <div class="spinner"></div>
+            <p id="loading-phase">Sending request...</p>
+          </div>
+          <div id="response-error" class="hidden response-error"></div>
+        </div>
+
+        <div class="response-body-container hidden" id="res-headers">
+          <div id="response-headers-table"></div>
+        </div>
+
+        <div class="response-body-container hidden" id="res-console">
+          <div id="console-output" class="console-output">
+            <div class="empty-state">No console output yet.<br/>Add <code>console.log()</code> or <code>pm.test()</code> to your scripts.</div>
+          </div>
+        </div>
+      </div>
+      <!-- End split-panel -->
+    </div>
+    </main>
+  </div>
+
+  <!-- ===== Modals ===== -->
+
+  <!-- Save Request -->
+  <div id="modal-save" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Save Request</h3>
+        <button class="modal-close" data-modal="modal-save">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Request Name</label>
+          <input type="text" id="save-req-name" placeholder="My Request" />
+        </div>
+        <div class="form-group">
+          <label>Collection</label>
+          <select id="save-req-collection">
+            <option value="_new">+ Create New Collection</option>
+          </select>
+        </div>
+        <div id="new-collection-form" class="form-group">
+          <label>Collection Name</label>
+          <input type="text" id="save-col-name" placeholder="My Collection" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" data-modal="modal-save">Cancel</button>
+        <button class="btn-primary" id="btn-confirm-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New/Edit Collection -->
+  <div id="modal-collection" class="modal hidden">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3 id="modal-collection-title">New Collection</h3>
+        <div class="modal-header-actions">
+          <button class="modal-fs-btn" id="btn-col-modal-fs" title="Fullscreen (F)">⤢</button>
+          <button class="modal-close" data-modal="modal-collection">×</button>
+        </div>
+      </div>
+
+      <!-- Modal Tabs -->
+      <div class="col-modal-tabs">
+        <button class="col-mtab active" data-ctab="cmtab-info">📁 Info</button>
+        <button class="col-mtab" data-ctab="cmtab-prescript">📜 Pre-Script</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Info Tab -->
+        <div id="cmtab-info" class="col-tab-pane">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="collection-name-input" placeholder="Collection name" />
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="collection-desc-input" placeholder="Optional description..." rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- Pre-Script Tab -->
+        <div id="cmtab-prescript" class="col-tab-pane hidden">
+          <div class="script-info-bar" style="margin-bottom:10px">
+            <span class="script-info-text">Runs <strong>before every request</strong> in this collection. Use it to set shared auth tokens, base URLs, or variables.</span>
+          </div>
+          <div class="var-chips-bar" style="margin-bottom:8px">
+            <span class="var-chips-label">Insert:</span>
+            <span class="var-chip col-ps-chip" data-var='pm.environment.set("token", "value")' title="Set env var">set env</span>
+            <span class="var-chip col-ps-chip" data-var='pm.environment.get("key")' title="Read env var">get env</span>
+            <span class="var-chip col-ps-chip" data-var='pm.utils.uuid()' title="UUID">uuid()</span>
+            <span class="var-chip col-ps-chip" data-var='pm.utils.timestamp()' title="Unix timestamp">timestamp()</span>
+            <span class="var-chip col-ps-chip" data-var='console.log()' title="Log">console.log()</span>
+          </div>
+          <div class="script-editor-container col-prescript-editor">
+            <div class="script-line-numbers" id="collection-prescript-line-numbers"></div>
+            <div class="script-editor-scroll" id="collection-prescript-editor-scroll">
+              <div class="script-editor-inner">
+                <div class="script-highlight-layer" id="collection-prescript-highlight-layer"></div>
+                <textarea id="collection-prescript-input" class="script-textarea"
+                  placeholder="// Collection Pre-Script — runs before EVERY request in this collection
+// Example: set a shared auth token
+// pm.environment.set('authToken', 'Bearer ' + pm.environment.get('tokenValue'));
+//
+// Example: log request info
+// console.log('Sending request to: ' + pm.request.url);" spellcheck="false"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span id="col-prescript-badge" class="col-prescript-badge hidden">📜 Has pre-script</span>
+        <div style="flex:1"></div>
+        <button class="btn-secondary" data-modal="modal-collection">Cancel</button>
+        <button class="btn-primary" id="btn-confirm-collection">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Environment -->
+  <div id="modal-env" class="modal hidden">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3 id="modal-env-title">Environment</h3>
+        <button class="modal-close" data-modal="modal-env">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="env-name-input" placeholder="e.g. Development, Staging, Production" />
+        </div>
+        <div class="form-group">
+          <!-- Header row with label + view toggle -->
+          <div class="env-vars-header">
+            <label>Variables</label>
+            <div class="env-view-btns">
+              <button class="env-view-btn active" id="btn-env-table" title="Table view">⊞ Table</button>
+              <button class="env-view-btn"        id="btn-env-json"  title="JSON view — paste or edit JSON">{ } JSON</button>
+            </div>
+          </div>
+
+          <!-- Table view (default) -->
+          <div id="env-table-view">
+            <div class="kv-table">
+              <div class="kv-header"><span>Variable</span><span>Value</span><span></span></div>
+              <div id="env-vars-list"></div>
+              <button class="add-row-btn" data-target="env-vars">+ Add Variable</button>
+            </div>
+          </div>
+
+          <!-- JSON view -->
+          <div id="env-json-view" class="hidden">
+            <div class="env-json-hint">
+              Paste JSON — supports <code>{"key":"value"}</code>, array <code>[{"key":"k","value":"v"}]</code>, or Postman env format.
+            </div>
+            <textarea id="env-json-input" class="code-editor env-json-editor"
+              placeholder='{&#10;  "url_egw": "https://api.example.com",&#10;  "client_id": "my-client-id",&#10;  "token": ""&#10;}'></textarea>
+            <div class="env-json-actions">
+              <button class="link-btn" id="btn-env-json-format">Format</button>
+              <span id="env-json-status" class="env-json-status"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" data-modal="modal-env">Cancel</button>
+        <button class="btn-primary" id="btn-confirm-env">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import cURL -->
+  <div id="modal-import-curl" class="modal hidden">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3>Import from cURL</h3>
+        <button class="modal-close" data-modal="modal-import-curl">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Paste your cURL command</label>
+          <textarea id="curl-import-input" rows="6"
+            placeholder="curl -X POST 'https://api.example.com/users' \&#10;  -H 'Content-Type: application/json' \&#10;  -H 'Authorization: Bearer token123' \&#10;  -d '{&quot;name&quot;: &quot;John&quot;}'"></textarea>
+        </div>
+        <!-- Live Preview -->
+        <div id="curl-preview" class="curl-preview hidden">
+          <div class="curl-preview-title">Preview</div>
+          <div class="curl-preview-rows">
+            <div class="curl-prev-row"><span class="prev-label">Method</span><span id="prev-method" class="prev-val"></span></div>
+            <div class="curl-prev-row"><span class="prev-label">URL</span><span id="prev-url" class="prev-val"></span></div>
+            <div class="curl-prev-row"><span class="prev-label">Headers</span><span id="prev-headers" class="prev-val"></span></div>
+            <div class="curl-prev-row"><span class="prev-label">Auth</span><span id="prev-auth" class="prev-val"></span></div>
+            <div class="curl-prev-row"><span class="prev-label">Body</span><span id="prev-body" class="prev-val"></span></div>
+          </div>
+        </div>
+        <div id="curl-preview-error" class="curl-preview-error hidden"></div>
+        
+        <!-- Save Options -->
+        <div id="curl-save-options" class="curl-save-options hidden">
+          <div class="curl-save-divider"><span>Save Options</span></div>
+          <div class="form-group">
+            <label>Request Name</label>
+            <input type="text" id="curl-req-name" placeholder="e.g. Get Users API" />
+          </div>
+          <div class="form-group">
+            <label>Save to Collection</label>
+            <select id="curl-save-collection">
+              <option value="">Don't save (just load)</option>
+              <option value="_new">+ Create New Collection</option>
+            </select>
+          </div>
+          <div id="curl-new-collection-form" class="form-group hidden">
+            <label>New Collection Name</label>
+            <input type="text" id="curl-new-col-name" placeholder="My Collection" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" data-modal="modal-import-curl">Cancel</button>
+        <button class="btn-primary" id="btn-confirm-import-curl" disabled>Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export cURL -->
+  <div id="modal-export-curl" class="modal hidden">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3>Export as cURL</h3>
+        <button class="modal-close" data-modal="modal-export-curl">×</button>
+      </div>
+      <div class="modal-body">
+        <pre id="curl-export-output" class="curl-export-pre"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" data-modal="modal-export-curl">Close</button>
+        <button class="btn-primary" id="btn-copy-curl">📋 Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Vars Reference -->
+  <div id="modal-dynvars" class="modal hidden">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3>Dynamic Variables Reference</h3>
+        <button class="modal-close" data-modal="modal-dynvars">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="dynvars-table">
+          <div class="dynvar-row header"><span>Variable</span><span>Description</span><span>Example</span></div>
+          <div class="dynvar-row"><code>{{$uuid}}</code><span>Random UUID v4</span><span class="dynvar-example" id="ex-uuid">—</span></div>
+          <div class="dynvar-row"><code>{{$timestamp}}</code><span>Unix epoch (seconds)</span><span class="dynvar-example" id="ex-ts">—</span></div>
+          <div class="dynvar-row"><code>{{$epochMs}}</code><span>Unix epoch (milliseconds)</span><span class="dynvar-example" id="ex-ms">—</span></div>
+          <div class="dynvar-row"><code>{{$isoTimestamp}}</code><span>ISO 8601 timestamp</span><span class="dynvar-example" id="ex-iso">—</span></div>
+          <div class="dynvar-row"><code>{{$randomInt}}</code><span>Random integer 0–999</span><span class="dynvar-example" id="ex-rand">—</span></div>
+          <div class="dynvar-row"><code>{{$timestampFormat:YYYY-MM-DD}}</code><span>Custom format timestamp</span><span class="dynvar-example" id="ex-fmt">—</span></div>
+        </div>
+        <div class="dynvars-formats" style="margin-top:16px">
+          <div class="form-group">
+            <label>Format tokens: <code>YYYY YY MM DD HH mm ss SSS</code></label>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
+              Example: <code>{{$timestampFormat:YYYY-MM-DDTHHmmss}}</code> → <span id="ex-custom-fmt">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" data-modal="modal-dynvars">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsaved Changes Modal -->
+  <div id="modal-unsaved" class="modal hidden">
+    <div class="modal-box modal-medium">
+      <div class="modal-header">
+        <h3>⚠️ Unsaved Changes</h3>
+        <button class="modal-close" data-modal="modal-unsaved">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 12px; color: var(--text-secondary);">You have unsaved changes in the following requests:</p>
+        <div id="unsaved-list" class="unsaved-list"></div>
+      </div>
+      <div class="modal-footer" style="gap: 8px;">
+        <button class="btn-secondary" id="btn-unsaved-ignore">Ignore & Reload</button>
+        <button class="btn-primary" id="btn-unsaved-save-all">Save All & Reload</button>
+        <button class="btn-secondary" data-modal="modal-unsaved">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for collection import -->
+  <input type="file" id="import-collection-file" style="display:none" />
+
+  <!-- Autocomplete Dropdown -->
+  <div id="ac-dropdown" class="ac-dropdown" style="display:none"></div>
+
+  <!-- Context Menu for Encode/Decode -->
+  <div id="context-menu" class="context-menu">
+    <div class="context-menu-title">Encode</div>
+    <button class="context-menu-item" data-action="encode-base64">Base64 Encode</button>
+    <button class="context-menu-item" data-action="encode-url">URL Encode</button>
+    <button class="context-menu-item" data-action="encode-html">HTML Encode</button>
+    <button class="context-menu-item" data-action="encode-json">JSON Stringify</button>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-title">Decode</div>
+    <button class="context-menu-item" data-action="decode-base64">Base64 Decode</button>
+    <button class="context-menu-item" data-action="decode-url">URL Decode</button>
+    <button class="context-menu-item" data-action="decode-html">HTML Decode</button>
+    <button class="context-menu-item" data-action="decode-json">JSON Parse</button>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-title">Hash</div>
+    <button class="context-menu-item" data-action="hash-md5">MD5</button>
+    <button class="context-menu-item" data-action="hash-sha1">SHA1</button>
+    <button class="context-menu-item" data-action="hash-sha256">SHA256</button>
+    <button class="context-menu-item" data-action="hash-sha512">SHA512</button>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-title">Format</div>
+    <button class="context-menu-item" data-action="format-json">Format JSON</button>
+    <button class="context-menu-item" data-action="minify-json">Minify JSON</button>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js?v=20261108v111"></script>
+</body>
+</html>
