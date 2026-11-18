@@ -1,0 +1,18 @@
+# API Client - Python Dependencies
+# 
+# This project uses only Python standard library modules.
+# No external dependencies required!
+#
+# Built-in modules used:
+# - json
+# - os, sys
+# - time
+# - urllib.request, urllib.error, urllib.parse
+# - ssl
+# - base64
+# - re
+# - threading
+# - http.server (HTTPServer, BaseHTTPRequestHandler)
+# - pathlib (Path)
+#
+# Requires: Python 3.7+
