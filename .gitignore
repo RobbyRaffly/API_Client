@@ -1,0 +1,18 @@
+# Data files (local storage)
+collections.json
+responses.json
+environments.json
+history.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node (if used later)
+node_modules/
