@@ -6148,12 +6148,13 @@ function updateBodyMeta() {
   });
   
   document.addEventListener('keydown', (e) => {
-    // Only handle Escape if context menu is visible
+    // Only handle Escape if context menu is visible, don't interfere with other shortcuts
     if (contextMenu.style.display === 'block' && e.key === 'Escape') {
       hideContextMenu();
+      e.preventDefault();
       e.stopPropagation();
     }
-  }, true); // Use capture phase
+  }); // Don't use capture phase to avoid interfering with other handlers
   
   // Handle menu item clicks - use event delegation on contextMenu
   contextMenu.onmousedown = function(e) {
