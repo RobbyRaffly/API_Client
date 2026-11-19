@@ -3585,6 +3585,8 @@ function loadSavedRequest(colId, reqId, folderId) {
   } else {
     document.getElementById('body-input').value = req.body || '';
   }
+  // Reset body history with loaded content
+  if (window.bodyHistory) window.bodyHistory.reset(req.body || '');
   // Update syntax highlighting and line numbers
   if (window.updateBodyHighlight) window.updateBodyHighlight();
   if (window.updateBodyLineNumbers) window.updateBodyLineNumbers();
@@ -3624,6 +3626,8 @@ function loadSavedRequest(colId, reqId, folderId) {
     } else {
       document.getElementById('body-input').value = c.body || '';
     }
+    // Reset body history with restored content
+    if (window.bodyHistory) window.bodyHistory.reset(c.body || '');
     state.currentRequest.auth = c.auth || { type: 'none' };
     document.getElementById('auth-type').value = c.auth?.type || 'none';
     renderAuthFields(c.auth?.type || 'none', c.auth || {});
@@ -4713,6 +4717,12 @@ function setupEventListeners() {
     maxSize: 100,
     isUndoRedo: false,
     
+    reset(initialValue) {
+      this.stack = [initialValue || ''];
+      this.index = 0;
+      this.isUndoRedo = false;
+    },
+    
     push(value) {
       if (this.isUndoRedo) return;
       // Remove any redo states
@@ -4775,6 +4785,7 @@ function setupEventListeners() {
         document.getElementById('body-input').value = prev;
         updateBodyMeta();
         updateBodyLineNumbers();
+        if (typeof updateBodyHighlight === 'function') updateBodyHighlight();
         bodyHistory.isUndoRedo = false;
       }
     } else if (mod && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
@@ -4786,6 +4797,7 @@ function setupEventListeners() {
         document.getElementById('body-input').value = next;
         updateBodyMeta();
         updateBodyLineNumbers();
+        if (typeof updateBodyHighlight === 'function') updateBodyHighlight();
         bodyHistory.isUndoRedo = false;
       }
     }
@@ -4949,6 +4961,7 @@ function setupEventListeners() {
   // Export functions globally
   window.updateBodyHighlight = updateBodyHighlight;
   window.updateBodyLineNumbers = updateBodyLineNumbers;
+  window.bodyHistory = bodyHistory;
 
   // ===== Script Editor: Syntax Highlighting for Pre-Script & Post-Script =====
   
@@ -5159,8 +5172,15 @@ function setupEventListeners() {
       document.getElementById('btn-beautify-body').click();
     } else if (mod && e.key === '/') {            // Cmd/Ctrl+/ = Toggle comment
       e.preventDefault();
+      // Save current state before toggle for undo (force save, bypass debounce)
+      clearTimeout(historyTimeout);
+      bodyHistory.push(bodyInput.value);
       toggleComment(bodyInput);
+      // Save new state immediately after toggle
+      bodyHistory.push(bodyInput.value);
       updateBodyMeta();
+      if (typeof updateBodyHighlight === 'function') updateBodyHighlight();
+      if (typeof updateBodyLineNumbers === 'function') updateBodyLineNumbers();
     } else if (e.key === 'Tab') {                 // Tab = indent (2 spaces)
       e.preventDefault();
       const s = bodyInput.selectionStart;
@@ -6089,6 +6109,7 @@ function updateBodyMeta() {
 }
 
 // ===== Context Menu for Encode/Decode =====
+// This IIFE runs after DOM is ready but before init()
 (function setupContextMenu() {
   const contextMenu = document.getElementById('context-menu');
   if (!contextMenu) return;
@@ -6096,26 +6117,6 @@ function updateBodyMeta() {
   let activeInput = null;
   let selectionStart = 0;
   let selectionEnd = 0;
-  
-  // Use event delegation to handle all text inputs and textareas
-  document.addEventListener('contextmenu', (e) => {
-    const target = e.target;
-    
-    // Check if target is a text input or textarea
-    const isTextInput = target.tagName === 'TEXTAREA' || 
-      (target.tagName === 'INPUT' && (target.type === 'text' || !target.type));
-    
-    if (!isTextInput) return;
-    
-    // Check if there's selected text
-    if (target.selectionStart !== target.selectionEnd) {
-      e.preventDefault();
-      activeInput = target;
-      selectionStart = target.selectionStart;
-      selectionEnd = target.selectionEnd;
-      showContextMenu(e.clientX, e.clientY);
-    }
-  });
   
   function showContextMenu(x, y) {
     contextMenu.style.display = 'block';
@@ -6140,25 +6141,44 @@ function updateBodyMeta() {
     activeInput = null;
   }
   
+  // Only intercept contextmenu when there's selected text in a text input
+  document.addEventListener('contextmenu', (e) => {
+    const target = e.target;
+    
+    // Check if target is a text input or textarea
+    const isTextInput = target.tagName === 'TEXTAREA' || 
+      (target.tagName === 'INPUT' && (target.type === 'text' || !target.type));
+    
+    if (!isTextInput) return; // Let default context menu show
+    
+    // Check if there's selected text
+    if (target.selectionStart === target.selectionEnd) return; // No selection, let default show
+    
+    // There's selected text - show custom menu
+    e.preventDefault();
+    activeInput = target;
+    selectionStart = target.selectionStart;
+    selectionEnd = target.selectionEnd;
+    showContextMenu(e.clientX, e.clientY);
+  });
+  
   // Hide menu on any click outside
   document.addEventListener('mousedown', (e) => {
-    if (!contextMenu.contains(e.target)) {
+    if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
       hideContextMenu();
     }
   });
   
+  // Hide on Escape - only if menu is visible
   document.addEventListener('keydown', (e) => {
-    // Only handle Escape if context menu is visible, don't interfere with other shortcuts
     if (contextMenu.style.display === 'block' && e.key === 'Escape') {
       hideContextMenu();
       e.preventDefault();
-      e.stopPropagation();
     }
-  }); // Don't use capture phase to avoid interfering with other handlers
+  });
   
   // Handle menu item clicks - use event delegation on contextMenu
   contextMenu.onmousedown = function(e) {
-    // Prevent the mousedown from triggering the document mousedown handler
     e.stopPropagation();
   };
   
