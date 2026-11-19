@@ -6137,25 +6137,35 @@ function updateBodyMeta() {
   
   function hideContextMenu() {
     contextMenu.style.display = 'none';
+    activeInput = null;
   }
   
   // Hide menu on any click outside
-  document.addEventListener('click', (e) => {
+  document.addEventListener('mousedown', (e) => {
     if (!contextMenu.contains(e.target)) {
       hideContextMenu();
     }
   });
   
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
+    // Only handle Escape if context menu is visible
+    if (contextMenu.style.display === 'block' && e.key === 'Escape') {
       hideContextMenu();
+      e.stopPropagation();
     }
-  });
+  }, true); // Use capture phase
   
   // Handle menu item clicks - use event delegation on contextMenu
+  contextMenu.onmousedown = function(e) {
+    // Prevent the mousedown from triggering the document mousedown handler
+    e.stopPropagation();
+  };
+  
   contextMenu.onclick = function(e) {
     const item = e.target.closest('.context-menu-item');
     if (!item || !activeInput) return;
+    
+    e.stopPropagation();
     
     const action = item.dataset.action;
     const selectedText = activeInput.value.substring(selectionStart, selectionEnd);
@@ -6242,19 +6252,14 @@ function updateBodyMeta() {
       hideContextMenu();
       activeInput = null;
       
-      // Focus and restore selection
-      inputRef.focus();
-      inputRef.setSelectionRange(startRef, endRef);
+      // Replace text directly (simpler approach, works better with browser undo)
+      const beforeText = inputRef.value.substring(0, startRef);
+      const afterText = inputRef.value.substring(endRef);
+      inputRef.value = beforeText + result + afterText;
       
-      // Use execCommand for undo/redo support
-      if (document.execCommand) {
-        document.execCommand('insertText', false, result);
-      } else {
-        const beforeText = inputRef.value.substring(0, startRef);
-        const afterText = inputRef.value.substring(endRef);
-        inputRef.value = beforeText + result + afterText;
-        inputRef.setSelectionRange(startRef, startRef + result.length);
-      }
+      // Focus and set cursor position
+      inputRef.focus();
+      inputRef.setSelectionRange(startRef, startRef + result.length);
       
       // Trigger input event
       inputRef.dispatchEvent(new Event('input', { bubbles: true }));
