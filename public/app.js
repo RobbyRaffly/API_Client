@@ -3972,13 +3972,58 @@ function setBodyType(type) {
   }
 }
 
+// ===== Insert Text with Undo Support =====
+// Uses execCommand when possible to preserve native undo stack
+function insertTextWithUndo(textarea, text, selectStart, selectEnd) {
+  if (!textarea) return;
+  
+  // Set selection range for replacement
+  textarea.selectionStart = selectStart;
+  textarea.selectionEnd = selectEnd;
+  textarea.focus();
+  
+  // Try execCommand first (deprecated but preserves undo)
+  let success = false;
+  try {
+    success = document.execCommand('insertText', false, text);
+  } catch (e) {
+    success = false;
+  }
+  
+  // Fallback to direct assignment if execCommand fails
+  if (!success) {
+    const before = textarea.value.substring(0, selectStart);
+    const after = textarea.value.substring(selectEnd);
+    textarea.value = before + text + after;
+    textarea.selectionStart = textarea.selectionEnd = selectStart + text.length;
+  }
+}
+
 // ===== Insert at Cursor =====
 function insertAtCursor(textarea, text) {
   if (!textarea) return;
   const s = textarea.selectionStart, e = textarea.selectionEnd;
-  textarea.value = textarea.value.slice(0, s) + text + textarea.value.slice(e);
-  textarea.selectionStart = textarea.selectionEnd = s + text.length;
-  textarea.focus();
+  const id = textarea.id;
+  
+  // For body-input, use custom history; for others, try to preserve native undo
+  if (id === 'body-input' && window.bodyHistory) {
+    window.bodyHistory.push(textarea.value);
+    textarea.value = textarea.value.slice(0, s) + text + textarea.value.slice(e);
+    textarea.selectionStart = textarea.selectionEnd = s + text.length;
+    textarea.focus();
+    window.bodyHistory.push(textarea.value);
+  } else {
+    // Use insertTextWithUndo for other fields to preserve native undo
+    insertTextWithUndo(textarea, text, s, e);
+  }
+  
+  // Update syntax highlighting based on which textarea
+  if (id === 'body-input') {
+    if (typeof updateBodyHighlight === 'function') updateBodyHighlight();
+    if (typeof updateBodyLineNumbers === 'function') updateBodyLineNumbers();
+  } else if (id === 'prescript-input' || id === 'postscript-input' || id === 'collection-prescript-input') {
+    if (typeof updateScriptHighlights === 'function') updateScriptHighlights();
+  }
 }
 
 // ===== Modals =====
@@ -5794,13 +5839,35 @@ function acAccept() {
   if (!item) return;
 
   const el = acState.textarea;
-  const before = el.value.substring(0, acState.wordStart);
-  const after  = el.value.substring(acState.wordEnd);
-  el.value = before + item.insert + after;
-  const cur = acState.wordStart + item.insert.length;
-  el.selectionStart = el.selectionEnd = cur;
-  el.focus();
+  const id = el.id;
+  const wordEnd = el.selectionStart;
+  
+  // For body-input, use custom history
+  if (id === 'body-input' && window.bodyHistory) {
+    window.bodyHistory.push(el.value);
+    const before = el.value.substring(0, acState.wordStart);
+    const after  = el.value.substring(wordEnd);
+    el.value = before + item.insert + after;
+    el.selectionStart = el.selectionEnd = acState.wordStart + item.insert.length;
+    el.focus();
+    window.bodyHistory.push(el.value);
+  } else {
+    // Use insertTextWithUndo for other fields to preserve native undo
+    insertTextWithUndo(el, item.insert, acState.wordStart, wordEnd);
+  }
+  
   acHide();
+  
+  // Update syntax highlighting based on which element
+  if (id === 'body-input') {
+    if (typeof updateBodyHighlight === 'function') updateBodyHighlight();
+    if (typeof updateBodyLineNumbers === 'function') updateBodyLineNumbers();
+  } else if (id === 'prescript-input' || id === 'postscript-input' || id === 'collection-prescript-input') {
+    if (typeof updateScriptHighlights === 'function') updateScriptHighlights();
+  } else if (el.classList.contains('kv-input') || el.classList.contains('kv-value-input')) {
+    // Update variable overlay for KV inputs (headers, params, etc.)
+    if (el._updateVarOverlay) el._updateVarOverlay();
+  }
 }
 
 function setupEditorAutocomplete(el) {
