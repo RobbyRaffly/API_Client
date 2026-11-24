@@ -4358,7 +4358,7 @@ function setupEventListeners() {
     
     // Load saved relay settings
     const savedEnabled = localStorage.getItem(RELAY_ENABLED_KEY) === 'true';
-    const savedUrl = localStorage.getItem(RELAY_URL_KEY) || '';
+    const savedUrl = localStorage.getItem(RELAY_URL_KEY) || 'http://apimicro-testing-mgt-sit.api.devtc.excelcom.co.id/relay';
     
     state.relayEnabled = savedEnabled;
     state.relayUrl = savedUrl;
@@ -4580,15 +4580,14 @@ function setupEventListeners() {
           }
         }
         
-        // Prepare request data
-        const headersObj = {};
-        parsed.headers.forEach(h => { headersObj[h.key] = h.value; });
+        // Prepare request data - headers as array format [{key, value, enabled}]
+        const headersArray = parsed.headers.map(h => ({ key: h.key, value: h.value, enabled: true }));
         
         const reqPayload = {
           name: reqName,
           method: parsed.method,
           url: parsed.url,
-          headers: headersObj,
+          headers: headersArray,
           body: parsed.body,
           bodyType: parsed.bodyType,
           auth: parsed.auth || { type: 'none' },
